@@ -1,0 +1,21 @@
+name: de_local_lab
+version: "1.0"
+config-version: 2
+
+profile: de_local_lab
+
+model-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+models:
+  de_local_lab:
+    staging:
+      +schema: raw
+      +materialized: view
+    marts:
+      +schema: mart
+      +materialized: table
