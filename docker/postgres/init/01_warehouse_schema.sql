@@ -14,5 +14,12 @@ CREATE TABLE IF NOT EXISTS raw.order_events (
   inserted_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-GRANT USAGE ON SCHEMA raw TO warehouse;
-GRANT USAGE ON SCHEMA mart TO warehouse;
+-- Allow warehouse role to create/write tables in raw and mart
+GRANT USAGE, CREATE ON SCHEMA raw TO warehouse;
+GRANT USAGE, CREATE ON SCHEMA mart TO warehouse;
+
+-- Ensure current and future tables are writable
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA raw TO warehouse;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA mart TO warehouse;
+ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL PRIVILEGES ON TABLES TO warehouse;
+ALTER DEFAULT PRIVILEGES IN SCHEMA mart GRANT ALL PRIVILEGES ON TABLES TO warehouse;

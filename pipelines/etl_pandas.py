@@ -1,13 +1,27 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
 import pandas as pd
+
+# Ensure project root is on sys.path so absolute imports work when run as a script
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 from pipelines.common.s3 import s3_client
 from pipelines.common.config import get_settings
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DIR = os.path.join(ROOT, "data", "raw")
 STAGE_DIR = os.path.join(ROOT, "data", "stage_parquet")
+PARQUET_KWARGS = {
+    "index": False,
+    # Force ms precision so Spark can read the files (Spark barfs on ns timestamps)
+    "coerce_timestamps": "ms",
+    "allow_truncated_timestamps": True,
+}
 
 def ensure_dirs():
     os.makedirs(STAGE_DIR, exist_ok=True)
@@ -42,9 +56,9 @@ def main():
     orders_p = os.path.join(STAGE_DIR, "orders.parquet")
     items_p = os.path.join(STAGE_DIR, "order_items.parquet")
 
-    customers.to_parquet(customers_p, index=False)
-    orders.to_parquet(orders_p, index=False)
-    items.to_parquet(items_p, index=False)
+    customers.to_parquet(customers_p, **PARQUET_KWARGS)
+    orders.to_parquet(orders_p, **PARQUET_KWARGS)
+    items.to_parquet(items_p, **PARQUET_KWARGS)
 
     # Upload to MinIO (S3-compatible)
     s3 = s3_client()
