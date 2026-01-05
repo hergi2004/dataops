@@ -3,6 +3,14 @@ from __future__ import annotations
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, to_timestamp
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType,
+    TimestampType,
+    DoubleType,
+    LongType,
+)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 STAGE_DIR = os.path.join(ROOT, "data", "stage_parquet")
@@ -21,6 +29,31 @@ JDBC_PROPS = {
     "driver": "org.postgresql.Driver",
 }
 
+CUSTOMERS_SCHEMA = StructType([
+    StructField("customer_id", StringType(), False),
+    StructField("email", StringType(), False),
+    StructField("state", StringType(), False),
+    StructField("created_at", TimestampType(), False),
+])
+
+ORDERS_SCHEMA = StructType([
+    StructField("order_id", StringType(), False),
+    StructField("customer_id", StringType(), False),
+    StructField("order_ts", TimestampType(), False),
+    StructField("status", StringType(), False),
+    StructField("order_total", DoubleType(), False),
+])
+
+ITEMS_SCHEMA = StructType([
+    StructField("order_id", StringType(), False),
+    StructField("product_id", StringType(), False),
+    StructField("category", StringType(), False),
+    StructField("unit_price", DoubleType(), False),
+    # Parquet writes this as int64; read as LongType to avoid conversion errors
+    StructField("quantity", LongType(), False),
+    StructField("line_amount", DoubleType(), False),
+])
+
 def spark() -> SparkSession:
     # Pull postgres driver from Maven (works when container has outbound internet).
     # If your environment blocks this, bake the driver jar into the image.
@@ -35,18 +68,26 @@ def spark() -> SparkSession:
 def main():
     s = spark()
 
-    customers = s.read.parquet(os.path.join(STAGE_DIR, "customers.parquet"))
-    orders = s.read.parquet(os.path.join(STAGE_DIR, "orders.parquet"))
-    items = s.read.parquet(os.path.join(STAGE_DIR, "order_items.parquet"))
+    customers = s.read.schema(CUSTOMERS_SCHEMA).parquet(os.path.join(STAGE_DIR, "customers.parquet"))
+    orders = s.read.schema(ORDERS_SCHEMA).parquet(os.path.join(STAGE_DIR, "orders.parquet"))
+    items = s.read.schema(ITEMS_SCHEMA).parquet(os.path.join(STAGE_DIR, "order_items.parquet"))
 
     # Minimal type hygiene
     customers = customers.withColumn("created_at", to_timestamp(col("created_at")))
     orders = orders.withColumn("order_ts", to_timestamp(col("order_ts")))
 
-    # Write into Postgres raw schema
-    customers.write.mode("overwrite").jdbc(JDBC_URL, "raw.customers", properties=JDBC_PROPS)
-    orders.write.mode("overwrite").jdbc(JDBC_URL, "raw.orders", properties=JDBC_PROPS)
-    items.write.mode("overwrite").jdbc(JDBC_URL, "raw.order_items", properties=JDBC_PROPS)
+    print("Customers schema:")
+    customers.printSchema()
+    print("Orders schema:")
+    orders.printSchema()
+    print("Order items schema:")
+    items.printSchema()
+
+    # Write into Postgres raw schema; use truncate to avoid dropping tables that other objects depend on
+    write_opts = {"truncate": "true"}
+    customers.write.options(**write_opts).mode("overwrite").jdbc(JDBC_URL, "raw.customers", properties=JDBC_PROPS)
+    orders.write.options(**write_opts).mode("overwrite").jdbc(JDBC_URL, "raw.orders", properties=JDBC_PROPS)
+    items.write.options(**write_opts).mode("overwrite").jdbc(JDBC_URL, "raw.order_items", properties=JDBC_PROPS)
 
     print("✅ Loaded raw tables into Postgres schema raw.*")
     s.stop()
